@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WFDC Stock — ระบบเบิกจ่ายอุปกรณ์สำนักงาน</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#101312;
+  --surface:#181c1a;
+  --surface2:#1f2422;
+  --line:#2c332f;
+  --ink:#e8ece9;
+  --ink-dim:#9aa39d;
+  --amber:#ffb020;
+  --amber-dk:#c7820a;
+  --green:#4cc38a;
+  --red:#ef6a5a;
+  --blue:#5aa9e6;
+  --radius:10px;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'IBM Plex Sans Thai',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;min-height:100vh;
+  background-image:radial-gradient(circle at 20% -10%,rgba(255,176,32,.05),transparent 40%),
+  repeating-linear-gradient(45deg,transparent 0 34px,rgba(255,255,255,.012) 34px 35px);}
+button{font-family:var(--sans);cursor:pointer}
+input,select,textarea{font-family:var(--sans);background:var(--bg);border:1px solid var(--line);color:var(--ink);
+  border-radius:8px;padding:10px 12px;font-size:15px;width:100%;outline:none;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--amber)}
+label{display:block;font-size:12.5px;color:var(--ink-dim);margin-bottom:5px;letter-spacing:.03em}
+
+/* ---------- layout ---------- */
+.wrap{max-width:1180px;margin:0 auto;padding:0 18px 60px}
+header{display:flex;align-items:center;gap:14px;padding:18px 0;border-bottom:1px solid var(--line);margin-bottom:22px}
+.logo{width:44px;height:44px;border-radius:9px;background:linear-gradient(135deg,var(--amber),var(--amber-dk));
+  display:grid;place-items:center;font-family:var(--mono);font-weight:600;color:#141414;font-size:15px;flex-shrink:0}
+.h-title{font-weight:700;font-size:17px;line-height:1.2}
+.h-sub{font-size:12px;color:var(--ink-dim);font-family:var(--mono)}
+.h-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.user-chip{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 15px;font-size:13.5px;display:flex;gap:8px;align-items:center}
+.user-chip b{color:var(--amber)}
+.role-tag{font-family:var(--mono);font-size:10.5px;background:var(--surface2);padding:2px 8px;border-radius:5px;color:var(--ink-dim);text-transform:uppercase}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:22px;border-bottom:1px solid var(--line);padding-bottom:0}
+.tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--ink-dim);padding:11px 16px;font-size:14.5px;font-weight:500;position:relative}
+.tab:hover{color:var(--ink)}
+.tab.active{color:var(--amber);border-bottom-color:var(--amber)}
+.tab .badge{position:absolute;top:4px;right:2px;background:var(--red);color:#fff;font-size:10px;font-family:var(--mono);
+  min-width:17px;height:17px;border-radius:9px;display:grid;place-items:center;padding:0 4px}
+
+/* ---------- cards ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card h3{font-size:15px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card h3::before{content:'';width:4px;height:16px;background:var(--amber);border-radius:2px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3,.grid4{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}
+
+/* ---------- stat tiles ---------- */
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden}
+.stat::after{content:'';position:absolute;inset:0 0 auto 0;height:3px;background:var(--amber)}
+.stat.s-red::after{background:var(--red)}
+.stat.s-green::after{background:var(--green)}
+.stat.s-blue::after{background:var(--blue)}
+.stat .num{font-family:var(--mono);font-size:30px;font-weight:600;line-height:1.1;margin:4px 0 2px}
+.stat .lbl{font-size:12.5px;color:var(--ink-dim)}
+
+/* ---------- buttons ---------- */
+.btn{border:none;border-radius:8px;padding:10px 18px;font-size:14.5px;font-weight:600;transition:filter .15s,transform .05s}
+.btn:active{transform:translateY(1px)}
+.btn:hover{filter:brightness(1.12)}
+.btn-primary{background:var(--amber);color:#161616}
+.btn-ghost{background:var(--surface2);color:var(--ink);border:1px solid var(--line)}
+.btn-green{background:var(--green);color:#0d2318}
+.btn-red{background:var(--red);color:#2a0d09}
+.btn-sm{padding:6px 12px;font-size:13px;border-radius:6px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ---------- table ---------- */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-dim);text-align:left;
+  padding:9px 12px;border-bottom:1px solid var(--line);font-weight:600;white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid rgba(44,51,47,.55);vertical-align:top}
+tr:hover td{background:rgba(255,255,255,.018)}
+.mono{font-family:var(--mono);font-size:13px}
+.num-cell{font-family:var(--mono);text-align:right}
+
+/* ---------- status pills ---------- */
+.pill{font-size:11.5px;font-family:var(--mono);padding:3px 10px;border-radius:999px;white-space:nowrap;font-weight:600}
+.p-pending{background:rgba(255,176,32,.14);color:var(--amber)}
+.p-approved{background:rgba(90,169,230,.14);color:var(--blue)}
+.p-issued{background:rgba(76,195,138,.14);color:var(--green)}
+.p-rejected{background:rgba(239,106,90,.14);color:var(--red)}
+.p-in{background:rgba(76,195,138,.14);color:var(--green)}
+.p-out{background:rgba(239,106,90,.14);color:var(--red)}
+.p-adjust{background:rgba(90,169,230,.14);color:var(--blue)}
+.low-flag{color:var(--red);font-weight:700}
+
+/* ---------- login ---------- */
+.login-box{max-width:400px;margin:9vh auto 0;background:var(--surface);border:1px solid var(--line);
+  border-radius:14px;padding:34px 30px;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+.login-box .logo{width:56px;height:56px;font-size:18px;margin:0 auto 16px}
+.login-box h1{font-size:19px;text-align:center;margin-bottom:4px}
+.login-box p{text-align:center;color:var(--ink-dim);font-size:13px;margin-bottom:24px}
+
+/* ---------- cart ---------- */
+.item-card{background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:13px 14px;display:flex;flex-direction:column;gap:8px}
+.item-card .nm{font-weight:600;font-size:14px;line-height:1.35}
+.item-card .meta{font-size:12px;color:var(--ink-dim);font-family:var(--mono)}
+.item-card .row{display:flex;gap:8px;align-items:center;margin-top:auto}
+.item-card input{width:76px;text-align:center;padding:7px}
+.items-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
+.cart-bar{position:sticky;bottom:14px;background:var(--surface);border:1px solid var(--amber);border-radius:12px;
+  padding:14px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 12px 34px rgba(0,0,0,.5);margin-top:18px}
+.cart-bar .cnt{font-family:var(--mono);color:var(--amber);font-weight:600}
+.cart-line{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line);gap:10px}
+.cart-line:last-child{border-bottom:none}
+
+/* ---------- misc ---------- */
+.toast{position:fixed;top:20px;right:20px;z-index:99;background:var(--surface);border:1px solid var(--green);
+  border-left:4px solid var(--green);border-radius:9px;padding:13px 18px;font-size:14px;max-width:360px;
+  box-shadow:0 14px 40px rgba(0,0,0,.5);animation:slideIn .22s ease}
+.toast.err{border-color:var(--red);border-left-color:var(--red)}
+@keyframes slideIn{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+.empty{text-align:center;color:var(--ink-dim);padding:34px 0;font-size:14px}
+.loader{display:inline-block;width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--amber);
+  border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.section-note{font-size:12.5px;color:var(--ink-dim);margin:-6px 0 14px}
+.flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
+.modal-bk{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:50;display:grid;place-items:center;padding:18px}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;max-width:560px;width:100%;
+  max-height:86vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.modal h3{font-size:16px;margin-bottom:16px}
+.hidden{display:none!important}
+.mt{margin-top:14px}.mb{margin-bottom:14px}
+.detail-line{display:flex;justify-content:space-between;font-size:13.5px;padding:5px 0}
+.detail-line span:first-child{color:var(--ink-dim)}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="viewLogin">
+  <div class="login-box">
+    <div class="logo">WF</div>
+    <h1>WFDC Stock System</h1>
+    <p>ระบบเบิกจ่ายอุปกรณ์สำนักงาน<br>Office Supply Requisition</p>
+    <label>รหัสพนักงาน / Employee ID</label>
+    <input id="loginId" class="mono" placeholder="เช่น 65001234" autocomplete="off"
+      onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn btn-primary mt" style="width:100%" onclick="doLogin()">
+      เข้าสู่ระบบ / Login
+    </button>
+    <div id="loginErr" style="color:var(--red);font-size:13px;text-align:center;margin-top:12px"></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="viewApp" class="wrap hidden">
+  <header>
+    <div class="logo">WF</div>
+    <div>
+      <div class="h-title">WFDC Stock System</div>
+      <div class="h-sub">OFFICE SUPPLY · WANGNOI</div>
+    </div>
+    <div class="h-right">
+      <div class="user-chip"><b id="uName"></b><span class="role-tag" id="uRole"></span></div>
+      <button class="btn btn-ghost btn-sm" onclick="logout()">ออก / Logout</button>
+    </div>
+  </header>
+
+  <div class="tabs" id="tabBar"></div>
+  <div id="tabContent"></div>
+</div>
+
+<div id="modalHost"></div>
+<div id="toastHost"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
