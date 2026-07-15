@@ -473,6 +473,10 @@ function doAdjust() {
     .then(function (res) {
       if (!res.success) return toast(res.error, true);
       toast('ปรับปรุงสำเร็จ ✓ (ส่วนต่าง ' + (res.diff > 0 ? '+' : '') + res.diff + ')');
+      var it = state.master.items.find(function (x) { return x.itemId === itemId; });
+      if (it && Number(qty) <= it.minStock) {
+        toast('⚠ สต็อกต่ำกว่าขั้นต่ำ — ส่งอีเมลแจ้งเตือนแล้ว', true);
+      }
       switchTab('stock');
     });
 }

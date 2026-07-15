@@ -9,25 +9,25 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
-  --bg:#101312;
-  --surface:#181c1a;
-  --surface2:#1f2422;
-  --line:#2c332f;
-  --ink:#e8ece9;
-  --ink-dim:#9aa39d;
-  --amber:#ffb020;
-  --amber-dk:#c7820a;
-  --green:#4cc38a;
-  --red:#ef6a5a;
-  --blue:#5aa9e6;
+  --bg:#f5f4f0;
+  --surface:#ffffff;
+  --surface2:#eeece5;
+  --line:#dcd8cd;
+  --ink:#22261f;
+  --ink-dim:#767a6d;
+  --amber:#e2860a;
+  --amber-dk:#a5610a;
+  --green:#1f9d63;
+  --red:#d94f3d;
+  --blue:#2f7fc9;
   --radius:10px;
   --mono:'IBM Plex Mono',monospace;
   --sans:'IBM Plex Sans Thai',sans-serif;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;min-height:100vh;
-  background-image:radial-gradient(circle at 20% -10%,rgba(255,176,32,.05),transparent 40%),
-  repeating-linear-gradient(45deg,transparent 0 34px,rgba(255,255,255,.012) 34px 35px);}
+  background-image:radial-gradient(circle at 20% -10%,rgba(226,134,10,.06),transparent 40%),
+  repeating-linear-gradient(45deg,transparent 0 34px,rgba(0,0,0,.012) 34px 35px);}
 button{font-family:var(--sans);cursor:pointer}
 input,select,textarea{font-family:var(--sans);background:var(--bg);border:1px solid var(--line);color:var(--ink);
   border-radius:8px;padding:10px 12px;font-size:15px;width:100%;outline:none;transition:border-color .15s}
@@ -90,7 +90,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}
 th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-dim);text-align:left;
   padding:9px 12px;border-bottom:1px solid var(--line);font-weight:600;white-space:nowrap}
 td{padding:10px 12px;border-bottom:1px solid rgba(44,51,47,.55);vertical-align:top}
-tr:hover td{background:rgba(255,255,255,.018)}
+tr:hover td{background:rgba(0,0,0,.03)}
 .mono{font-family:var(--mono);font-size:13px}
 .num-cell{font-family:var(--mono);text-align:right}
 
