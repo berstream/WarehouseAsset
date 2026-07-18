@@ -146,6 +146,34 @@ tr:hover td{background:rgba(0,0,0,.03)}
 .mt{margin-top:14px}.mb{margin-bottom:14px}
 .detail-line{display:flex;justify-content:space-between;font-size:13.5px;padding:5px 0}
 .detail-line span:first-child{color:var(--ink-dim)}
+
+/* ---------- charts ---------- */
+.donut-wrap{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+.donut{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;flex-shrink:0}
+.donut-hole{width:96px;height:96px;border-radius:50%;background:var(--surface);display:grid;place-items:center;text-align:center}
+.donut-big{font-family:var(--mono);font-size:24px;font-weight:600;line-height:1}
+.donut-sub{font-size:10.5px;color:var(--ink-dim);margin-top:3px}
+.legend{display:flex;flex-direction:column;gap:9px;font-size:13.5px}
+.lg{display:flex;align-items:center;gap:8px}
+.lg i{width:11px;height:11px;border-radius:3px;flex-shrink:0}
+.lg b{font-family:var(--mono)}
+.hbar-row{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.hbar-lbl{width:38%;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hbar-track{flex:1;height:16px;background:var(--surface2);border-radius:8px;overflow:hidden}
+.hbar-fill{height:100%;background:var(--amber);border-radius:8px;transition:width .5s ease}
+.hbar-val{font-family:var(--mono);font-size:13px;width:44px;text-align:right;font-weight:600}
+.vbars{display:flex;align-items:flex-end;gap:14px;height:170px;padding-top:8px}
+.vbar-col{flex:1;display:flex;flex-direction:column;align-items:center;height:100%}
+.vbar-val{font-family:var(--mono);font-size:12px;font-weight:600;margin-bottom:4px}
+.vbar-track{flex:1;width:100%;max-width:46px;display:flex;align-items:flex-end}
+.vbar-fill{width:100%;background:linear-gradient(180deg,var(--amber),var(--amber-dk));border-radius:6px 6px 0 0;transition:height .5s ease}
+.vbar-lbl{font-size:11.5px;color:var(--ink-dim);margin-top:6px;font-family:var(--mono)}
+
+/* ---------- filter bar ---------- */
+.filter-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;
+  background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:12px 14px}
+.filter-bar .fb-field{min-width:130px}
+.filter-bar input,.filter-bar select{padding:8px 10px;font-size:13.5px;background:var(--surface)}
 </style>
 </head>
 <body>

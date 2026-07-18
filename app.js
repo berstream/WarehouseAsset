@@ -249,13 +249,54 @@ function submitRequest() {
 /* ================================================================
  * TAB: ประวัติของฉัน
  * ================================================================ */
+var _myHistCache = [];
 function renderMyHistory(host) {
   api('getRequests', { employeeId: state.user.employeeId }).then(function (res) {
     if (!res.success) { host.innerHTML = '<div class="empty">' + esc(res.error) + '</div>'; return; }
+    _myHistCache = res.requests;
     host.innerHTML =
       '<div class="card"><h3>ประวัติการเบิกของฉัน (ย้อนหลัง 3 เดือน)</h3>' +
       '<div class="section-note">My requisition history — last 3 months</div>' +
-      requestTable(res.requests, false) + '</div>';
+      '<div class="filter-bar">' +
+      '<div class="fb-field"><label>จากวันที่ / From</label><input type="date" id="mhFrom" onchange="drawMyHistory()"></div>' +
+      '<div class="fb-field"><label>ถึงวันที่ / To</label><input type="date" id="mhTo" onchange="drawMyHistory()"></div>' +
+      '<div class="fb-field"><label>สถานะ / Status</label><select id="mhStatus" onchange="drawMyHistory()">' +
+      '<option value="">ทั้งหมด / All</option>' +
+      '<option value="pending">รออนุมัติ</option><option value="approved">อนุมัติแล้ว</option>' +
+      '<option value="issued">จ่ายแล้ว</option><option value="rejected">ปฏิเสธ</option></select></div>' +
+      '<button class="btn btn-ghost btn-sm" onclick="clearMyHistFilter()">ล้าง / Clear</button>' +
+      '</div>' +
+      '<div id="mhTable"></div></div>';
+    drawMyHistory();
+  });
+}
+
+function clearMyHistFilter() {
+  document.getElementById('mhFrom').value = '';
+  document.getElementById('mhTo').value = '';
+  document.getElementById('mhStatus').value = '';
+  drawMyHistory();
+}
+
+function drawMyHistory() {
+  var el = document.getElementById('mhTable');
+  if (!el) return;
+  el.innerHTML = requestTable(filterByDateStatus(_myHistCache, 'mhFrom', 'mhTo', 'mhStatus', 'requestedAt', 'status'), false);
+}
+
+/** Generic client-side filter: date range + exact field match */
+function filterByDateStatus(rows, fromId, toId, selId, dateField, matchField) {
+  var from = document.getElementById(fromId).value;
+  var to = document.getElementById(toId).value;
+  var sel = document.getElementById(selId).value;
+  var fromD = from ? new Date(from + 'T00:00:00') : null;
+  var toD = to ? new Date(to + 'T23:59:59') : null;
+  return rows.filter(function (r) {
+    if (sel && String(r[matchField]) !== sel) return false;
+    var d = new Date(r[dateField]);
+    if (fromD && d < fromD) return false;
+    if (toD && d > toD) return false;
+    return true;
   });
 }
 
@@ -312,6 +353,73 @@ function renderDashboard(host) {
     if (!res.success) { host.innerHTML = '<div class="empty">' + esc(res.error) + '</div>'; return; }
     updatePendingBadge(res.pendingRequests);
     var low = res.lowStock || [];
+    var sh = res.stockHealth || { ok: 0, low: 0, out: 0 };
+    var total = sh.ok + sh.low + sh.out;
+    var pOk = total ? Math.round(sh.ok / total * 100) : 0;
+    var pLow = total ? Math.round(sh.low / total * 100) : 0;
+    var pOut = total ? Math.max(100 - pOk - pLow, 0) : 0;
+
+    // ---- donut (conic-gradient) ----
+    var degOk = total ? sh.ok / total * 360 : 0;
+    var degLow = total ? sh.low / total * 360 : 0;
+    var donut =
+      '<div class="donut-wrap">' +
+      '<div class="donut" style="background:conic-gradient(var(--green) 0deg ' + degOk + 'deg,var(--amber) ' + degOk + 'deg ' + (degOk + degLow) + 'deg,var(--red) ' + (degOk + degLow) + 'deg 360deg)">' +
+      '<div class="donut-hole"><div class="donut-big">' + pOk + '%</div><div class="donut-sub">สต็อกปกติ</div></div></div>' +
+      '<div class="legend">' +
+      '<div class="lg"><i style="background:var(--green)"></i>ปกติ / OK <b>' + sh.ok + '</b> (' + pOk + '%)</div>' +
+      '<div class="lg"><i style="background:var(--amber)"></i>ใกล้หมด / Low <b>' + sh.low + '</b> (' + pLow + '%)</div>' +
+      '<div class="lg"><i style="background:var(--red)"></i>หมด / Out <b>' + sh.out + '</b> (' + pOut + '%)</div>' +
+      '</div></div>';
+
+    // ---- top 5 bar chart ----
+    var top = res.topItems || [];
+    var maxQty = top.length ? top[0].qty : 1;
+    var topBars = top.length ? top.map(function (t) {
+      var w = Math.max(t.qty / maxQty * 100, 3);
+      return '<div class="hbar-row"><div class="hbar-lbl" title="' + esc(t.itemName) + '">' + esc(t.itemName) + '</div>' +
+        '<div class="hbar-track"><div class="hbar-fill" style="width:' + w + '%"></div></div>' +
+        '<div class="hbar-val">' + t.qty + '</div></div>';
+    }).join('') : '<div class="empty">ยังไม่มีข้อมูลการเบิก</div>';
+
+    // ---- category usage bars ----
+    var cats = res.categoryUsage || [];
+    var catTotal = cats.reduce(function (s, c) { return s + c.qty; }, 0) || 1;
+    var catColors = ['var(--blue)', 'var(--green)', 'var(--amber)', 'var(--red)', '#8e6bbf', '#4db6ac'];
+    var catBars = cats.length ? cats.map(function (c, i) {
+      var pct = Math.round(c.qty / catTotal * 100);
+      return '<div class="hbar-row"><div class="hbar-lbl" title="' + esc(c.category) + '">' + esc(c.category) + '</div>' +
+        '<div class="hbar-track"><div class="hbar-fill" style="width:' + Math.max(pct, 3) + '%;background:' + catColors[i % catColors.length] + '"></div></div>' +
+        '<div class="hbar-val">' + pct + '%</div></div>';
+    }).join('') : '<div class="empty">ยังไม่มีข้อมูล</div>';
+
+    // ---- monthly trend (vertical bars) ----
+    var months = res.monthlyUsage || [];
+    var maxM = months.reduce(function (m, x) { return Math.max(m, x.qty); }, 1);
+    var thMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    var trend = months.length ? '<div class="vbars">' + months.map(function (m) {
+      var h = Math.max(m.qty / maxM * 100, 4);
+      var mi = parseInt(m.month.split('-')[1], 10) - 1;
+      return '<div class="vbar-col"><div class="vbar-val">' + m.qty + '</div>' +
+        '<div class="vbar-track"><div class="vbar-fill" style="height:' + h + '%"></div></div>' +
+        '<div class="vbar-lbl">' + thMonths[mi] + '</div></div>';
+    }).join('') + '</div>' : '<div class="empty">ยังไม่มีข้อมูล</div>';
+
+    // ---- reorder table ----
+    var reorder = low.length
+      ? '<div class="tbl-wrap"><table><thead><tr><th>อุปกรณ์</th><th>หมวดหมู่</th><th style="text-align:right">คงเหลือ</th><th style="text-align:right">ขั้นต่ำ</th><th style="text-align:right">แนะนำสั่งซื้อ</th></tr></thead><tbody>' +
+        low.map(function (it) {
+          var badge = it.currentStock <= 0
+            ? '<span class="pill p-rejected">หมด</span> '
+            : '';
+          return '<tr><td>' + badge + esc(it.itemName) + '<br><span class="mono" style="color:var(--ink-dim);font-size:11.5px">' + esc(it.itemId) + '</span></td>' +
+            '<td style="font-size:13px">' + esc(it.category) + '</td>' +
+            '<td class="num-cell low-flag">' + it.currentStock + '</td>' +
+            '<td class="num-cell">' + it.minStock + '</td>' +
+            '<td class="num-cell" style="color:var(--blue);font-weight:700">+' + it.suggestedOrder + ' ' + esc(it.unit) + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<div class="empty">✓ ไม่มีรายการต้องสั่งซื้อ / Nothing to reorder</div>';
+
     host.innerHTML =
       '<div class="grid4 mb">' +
       '<div class="stat"><div class="lbl">อุปกรณ์ทั้งหมด / Items</div><div class="num">' + res.totalItems + '</div></div>' +
@@ -319,15 +427,16 @@ function renderDashboard(host) {
       '<div class="stat s-blue"><div class="lbl">รอจ่ายของ / To Issue</div><div class="num">' + res.approvedAwaitingIssue + '</div></div>' +
       '<div class="stat s-green"><div class="lbl">จ่ายแล้วเดือนนี้ / Issued MTD</div><div class="num">' + res.issuedThisMonth + '</div></div>' +
       '</div>' +
-      '<div class="card"><h3>สต็อกต่ำกว่าจุดสั่งซื้อ / Low Stock (' + low.length + ')</h3>' +
-      (low.length
-        ? '<div class="tbl-wrap"><table><thead><tr><th>รหัส</th><th>ชื่ออุปกรณ์</th><th style="text-align:right">คงเหลือ</th><th style="text-align:right">ขั้นต่ำ</th><th>หน่วย</th></tr></thead><tbody>' +
-          low.map(function (it) {
-            return '<tr><td class="mono">' + esc(it.itemId) + '</td><td>' + esc(it.itemName) + '</td>' +
-              '<td class="num-cell low-flag">' + it.currentStock + '</td><td class="num-cell">' + it.minStock + '</td><td>' + esc(it.unit) + '</td></tr>';
-          }).join('') + '</tbody></table></div>'
-        : '<div class="empty">✓ ไม่มีรายการสต็อกต่ำ / All stock levels OK</div>') +
-      '</div>';
+      '<div class="grid2">' +
+      '<div class="card"><h3>สุขภาพสต็อก / Stock Health</h3>' + donut + '</div>' +
+      '<div class="card"><h3>เบิกเยอะสุด 5 อันดับ (3 เดือน) / Top Requested</h3>' + topBars + '</div>' +
+      '</div>' +
+      '<div class="grid2">' +
+      '<div class="card"><h3>สัดส่วนการเบิกตามหมวดหมู่ / Usage by Category</h3>' + catBars + '</div>' +
+      '<div class="card"><h3>แนวโน้มการเบิกรายเดือน / Monthly Trend</h3>' + trend + '</div>' +
+      '</div>' +
+      '<div class="card"><h3>ต้องสั่งซื้อ / Reorder List (' + low.length + ')</h3>' +
+      '<div class="section-note">เรียงตามความเร่งด่วน — แนะนำสั่งซื้อคำนวณจากเติมให้ถึง 2 เท่าของขั้นต่ำ</div>' + reorder + '</div>';
   });
 }
 
@@ -696,25 +805,73 @@ function doImportEmp() {
  * TAB: ความเคลื่อนไหว (movements)
  * ================================================================ */
 function renderMovements(host) {
-  api('getMovements', {}).then(function (res) {
+  Promise.all([api('getMovements', {}), loadMaster()]).then(function (results) {
+    var res = results[0];
     if (!res.success) { host.innerHTML = '<div class="empty">' + esc(res.error) + '</div>'; return; }
-    var moves = res.movements;
+    window._movesCache = res.movements;
+    // itemId -> category map for category filter
+    window._itemCatMap = {};
+    state.master.items.forEach(function (it) { window._itemCatMap[it.itemId] = it.category; });
+    var catOpts = '<option value="">ทุกหมวดหมู่ / All</option>' +
+      state.master.categories.map(function (c) {
+        return '<option value="' + esc(c.categoryId) + '">' + esc(c.categoryName) + '</option>';
+      }).join('');
     host.innerHTML =
       '<div class="card"><h3>ความเคลื่อนไหวสต็อก (ย้อนหลัง 3 เดือน) / Stock Movements</h3>' +
-      '<div class="flex mb"><span class="spacer"></span><button class="btn btn-ghost btn-sm" onclick="exportMovements()">⬇ Export Excel</button></div>' +
-      (moves.length
-        ? '<div class="tbl-wrap"><table><thead><tr><th>วันที่</th><th>ประเภท</th><th>อุปกรณ์</th><th style="text-align:right">จำนวน</th><th>อ้างอิง</th><th>โดย</th><th>หมายเหตุ</th></tr></thead><tbody>' +
-          moves.map(function (m) {
-            return '<tr><td class="mono" style="font-size:12.5px">' + fmtDate(m.at) + '</td>' +
-              '<td>' + pill(m.type) + '</td><td>' + esc(m.itemName) + '</td>' +
-              '<td class="num-cell" style="color:' + (m.qty >= 0 ? 'var(--green)' : 'var(--red)') + '">' + (m.qty > 0 ? '+' : '') + m.qty + '</td>' +
-              '<td class="mono" style="font-size:12px">' + esc(m.ref) + '</td><td class="mono" style="font-size:12px">' + esc(m.by) + '</td>' +
-              '<td style="font-size:13px;color:var(--ink-dim)">' + esc(m.note) + '</td></tr>';
-          }).join('') + '</tbody></table></div>'
-        : '<div class="empty">ไม่มีรายการ</div>') +
-      '</div>';
-    window._movesCache = moves;
+      '<div class="filter-bar">' +
+      '<div class="fb-field"><label>จากวันที่ / From</label><input type="date" id="mvFrom" onchange="drawMovements()"></div>' +
+      '<div class="fb-field"><label>ถึงวันที่ / To</label><input type="date" id="mvTo" onchange="drawMovements()"></div>' +
+      '<div class="fb-field"><label>ประเภท / Type</label><select id="mvType" onchange="drawMovements()">' +
+      '<option value="">ทั้งหมด / All</option>' +
+      '<option value="IN">รับเข้า / IN</option><option value="OUT">เบิกจ่าย / OUT</option>' +
+      '<option value="ADJUST">ปรับปรุง / ADJUST</option></select></div>' +
+      '<div class="fb-field" style="min-width:180px"><label>หมวดหมู่ / Category</label><select id="mvCat" onchange="drawMovements()">' + catOpts + '</select></div>' +
+      '<button class="btn btn-ghost btn-sm" onclick="clearMvFilter()">ล้าง / Clear</button>' +
+      '<span class="spacer"></span>' +
+      '<button class="btn btn-ghost btn-sm" onclick="exportMovements()">⬇ Export Excel</button>' +
+      '</div>' +
+      '<div id="mvSummary"></div><div id="mvTable"></div></div>';
+    drawMovements();
   });
+}
+
+function clearMvFilter() {
+  ['mvFrom', 'mvTo', 'mvType', 'mvCat'].forEach(function (id) { document.getElementById(id).value = ''; });
+  drawMovements();
+}
+
+function drawMovements() {
+  var el = document.getElementById('mvTable');
+  if (!el) return;
+  var moves = filterByDateStatus(window._movesCache || [], 'mvFrom', 'mvTo', 'mvType', 'at', 'type');
+  var cat = document.getElementById('mvCat').value;
+  if (cat) moves = moves.filter(function (m) { return (window._itemCatMap[m.itemId] || '') === cat; });
+  window._movesFiltered = moves; // export uses filtered view
+
+  // summary strip: totals per type of the filtered set
+  var tIn = 0, tOut = 0, tAdj = 0;
+  moves.forEach(function (m) {
+    if (m.type === 'IN') tIn += m.qty;
+    else if (m.type === 'OUT') tOut += Math.abs(m.qty);
+    else tAdj += m.qty;
+  });
+  document.getElementById('mvSummary').innerHTML =
+    '<div class="flex mb" style="gap:16px;font-size:13.5px">' +
+    '<span>แสดง <b class="mono">' + moves.length + '</b> รายการ</span>' +
+    '<span style="color:var(--green)">รับเข้า <b class="mono">+' + tIn + '</b></span>' +
+    '<span style="color:var(--red)">เบิกจ่าย <b class="mono">-' + tOut + '</b></span>' +
+    '<span style="color:var(--blue)">ปรับปรุง <b class="mono">' + (tAdj >= 0 ? '+' : '') + tAdj + '</b></span></div>';
+
+  el.innerHTML = moves.length
+    ? '<div class="tbl-wrap"><table><thead><tr><th>วันที่</th><th>ประเภท</th><th>อุปกรณ์</th><th style="text-align:right">จำนวน</th><th>อ้างอิง</th><th>โดย</th><th>หมายเหตุ</th></tr></thead><tbody>' +
+      moves.map(function (m) {
+        return '<tr><td class="mono" style="font-size:12.5px">' + fmtDate(m.at) + '</td>' +
+          '<td>' + pill(m.type) + '</td><td>' + esc(m.itemName) + '</td>' +
+          '<td class="num-cell" style="color:' + (m.qty >= 0 ? 'var(--green)' : 'var(--red)') + '">' + (m.qty > 0 ? '+' : '') + m.qty + '</td>' +
+          '<td class="mono" style="font-size:12px">' + esc(m.ref) + '</td><td class="mono" style="font-size:12px">' + esc(m.by) + '</td>' +
+          '<td style="font-size:13px;color:var(--ink-dim)">' + esc(m.note) + '</td></tr>';
+      }).join('') + '</tbody></table></div>'
+    : '<div class="empty">ไม่มีรายการตามเงื่อนไข / No records match filters</div>';
 }
 
 /* ================================================================
@@ -780,7 +937,7 @@ function exportStock() {
 }
 
 function exportMovements() {
-  var moves = window._movesCache || [];
+  var moves = window._movesFiltered || window._movesCache || [];
   var rows = [['วันที่ / Date', 'ประเภท / Type', 'รหัส / Item ID', 'ชื่ออุปกรณ์ / Item Name',
     'จำนวน / Qty', 'อ้างอิง / Ref', 'โดย / By', 'หมายเหตุ / Note']];
   moves.forEach(function (m) {
