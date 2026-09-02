@@ -68,11 +68,16 @@ function enterApp() {
   loadMaster().then(function () { switchTab(isAdmin() ? 'dashboard' : 'request'); });
 }
 
-function loadMaster() {
+var _masterTs = 0;
+var MASTER_TTL = 60000; // 60s — master data changes rarely; skip re-fetch on tab switches
+function loadMaster(force) {
+  var fresh = state.master.items.length && (Date.now() - _masterTs < MASTER_TTL);
+  if (fresh && !force) return Promise.resolve();
   return api('getMasterData').then(function (res) {
-    if (res.success) state.master = res;
+    if (res.success) { state.master = res; _masterTs = Date.now(); }
   });
 }
+function invalidateMaster() { _masterTs = 0; } // call after any item/category write
 
 /* ---------------- tabs ---------------- */
 function buildTabs() {
@@ -145,7 +150,7 @@ function closeModal() { document.getElementById('modalHost').innerHTML = ''; }
  * TAB: เบิกของ (cart)
  * ================================================================ */
 function renderRequest(host) {
-  loadMaster().then(function () {
+  loadMaster(true).then(function () {
     var cats = state.master.categories;
     var catOpts = '<option value="">ทุกหมวดหมู่ / All</option>' +
       cats.map(function (c) { return '<option value="' + esc(c.categoryId) + '">' + esc(c.categoryName) + '</option>'; }).join('');
@@ -458,19 +463,61 @@ function renderApprovals(host) {
     var approved = reqs.filter(function (r) { return r.status === 'approved'; });
     var done = reqs.filter(function (r) { return r.status === 'issued' || r.status === 'rejected'; });
     updatePendingBadge(pending.length);
+    _bulkSel = { pending: {}, approved: {} }; // reset selection each render
 
     host.innerHTML =
-      '<div class="card"><h3>รออนุมัติ / Pending Approval (' + pending.length + ')</h3>' + adminReqTable(pending, 'pending') + '</div>' +
-      '<div class="card"><h3>อนุมัติแล้ว รอจ่ายของ / Approved — Awaiting Issue (' + approved.length + ')</h3>' + adminReqTable(approved, 'approved') + '</div>' +
+      '<div class="card"><h3>รออนุมัติ / Pending Approval (' + pending.length + ')</h3>' +
+      bulkBar('pending', 'อนุมัติที่เลือก', 'bulkApprove') +
+      adminReqTable(pending, 'pending') + '</div>' +
+      '<div class="card"><h3>อนุมัติแล้ว รอจ่ายของ / Approved — Awaiting Issue (' + approved.length + ')</h3>' +
+      bulkBar('approved', 'จ่ายที่เลือก', 'bulkIssue') +
+      adminReqTable(approved, 'approved') + '</div>' +
       '<div class="card"><h3>เสร็จสิ้น / Completed (3 เดือนล่าสุด)</h3>' +
       '<div class="flex mb"><span class="spacer"></span><button class="btn btn-ghost btn-sm" onclick="exportRequests()">⬇ Export Excel</button></div>' +
       requestTable(done, true) + '</div>';
   });
 }
 
+var _bulkSel = { pending: {}, approved: {} };
+
+function bulkBar(mode, actionLabel, handler) {
+  var color = mode === 'pending' ? 'btn-green' : 'btn-primary';
+  return '<div class="flex mb" id="bulkbar-' + mode + '" style="gap:10px">' +
+    '<label class="flex" style="gap:6px;font-size:13.5px;cursor:pointer"><input type="checkbox" style="width:auto" onchange="toggleAll(\'' + mode + '\',this.checked)"> เลือกทั้งหมด</label>' +
+    '<span class="spacer"></span>' +
+    '<span id="bulkcount-' + mode + '" style="font-size:13.5px;color:var(--ink-dim)"></span>' +
+    '<button class="btn ' + color + ' btn-sm" id="bulkbtn-' + mode + '" onclick="' + handler + '()" disabled>' + actionLabel + '</button>' +
+    '</div>';
+}
+
+function toggleSel(mode, reqId, checked) {
+  if (checked) _bulkSel[mode][reqId] = true;
+  else delete _bulkSel[mode][reqId];
+  refreshBulkBar(mode);
+}
+
+function toggleAll(mode, checked) {
+  document.querySelectorAll('.bulk-cb-' + mode).forEach(function (cb) {
+    cb.checked = checked;
+    var id = cb.getAttribute('data-req');
+    if (checked) _bulkSel[mode][id] = true; else delete _bulkSel[mode][id];
+  });
+  refreshBulkBar(mode);
+}
+
+function refreshBulkBar(mode) {
+  var n = Object.keys(_bulkSel[mode]).length;
+  var cnt = document.getElementById('bulkcount-' + mode);
+  var btn = document.getElementById('bulkbtn-' + mode);
+  if (cnt) cnt.textContent = n ? 'เลือก ' + n + ' รายการ' : '';
+  if (btn) btn.disabled = !n;
+}
+
 function adminReqTable(reqs, mode) {
   if (!reqs.length) return '<div class="empty">ไม่มีรายการ</div>';
+  var canBulk = (mode === 'pending' || mode === 'approved');
   return '<div class="tbl-wrap"><table><thead><tr>' +
+    (canBulk ? '<th style="width:34px"></th>' : '') +
     '<th>เลขที่</th><th>ผู้เบิก</th><th>รายการ</th><th>วันที่ขอ</th><th>ดำเนินการ</th></tr></thead><tbody>' +
     reqs.map(function (r) {
       var itemsTxt = r.items.map(function (i) { return esc(i.itemName) + ' × ' + i.qty; }).join('<br>');
@@ -481,7 +528,10 @@ function adminReqTable(reqs, mode) {
       } else if (mode === 'approved') {
         actions = '<button class="btn btn-primary btn-sm" onclick="actIssue(\'' + r.requestId + '\')">จ่ายของ ✓</button>';
       }
-      return '<tr><td class="mono">' + esc(r.requestId) + '</td>' +
+      var cb = canBulk
+        ? '<td><input type="checkbox" class="bulk-cb-' + mode + '" data-req="' + r.requestId + '" style="width:auto" onchange="toggleSel(\'' + mode + '\',\'' + r.requestId + '\',this.checked)"></td>'
+        : '';
+      return '<tr>' + cb + '<td class="mono">' + esc(r.requestId) + '</td>' +
         '<td>' + esc(r.employeeName) + '<br><span class="mono" style="color:var(--ink-dim);font-size:12px">' + esc(r.employeeId) + ' · ' + esc(r.department) + '</span></td>' +
         '<td style="font-size:13px">' + itemsTxt + '</td>' +
         '<td class="mono" style="font-size:12.5px">' + fmtDate(r.requestedAt) + '</td>' +
@@ -512,19 +562,52 @@ function actIssue(reqId) {
   if (!confirm('ยืนยันจ่ายของ + ตัดสต็อก คำขอ ' + reqId + '?')) return;
   api('issueRequest', { adminId: state.user.employeeId, requestId: reqId }).then(function (res) {
     if (!res.success) return toast(res.error, true);
+    invalidateMaster();
     toast('จ่ายของสำเร็จ ✓ สต็อกถูกตัดแล้ว');
-    if (res.lowStock && res.lowStock.length) {
-      toast('⚠ มี ' + res.lowStock.length + ' รายการสต็อกต่ำ — ส่งอีเมลแจ้งเตือนแล้ว', true);
-    }
+    if (res.skipped && res.skipped.length) toast('⚠ ข้ามรายการที่ไม่พบในคลัง: ' + res.skipped.join(', '), true);
+    if (res.lowStock && res.lowStock.length) toast('⚠ มี ' + res.lowStock.length + ' รายการสต็อกต่ำ — ส่งอีเมลแล้ว', true);
     switchTab('approvals');
   });
+}
+
+function bulkApprove() {
+  var ids = Object.keys(_bulkSel.pending);
+  if (!ids.length) return;
+  if (!confirm('อนุมัติ ' + ids.length + ' คำขอที่เลือก?')) return;
+  var btn = document.getElementById('bulkbtn-pending');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loader"></span>'; }
+  api('bulkApprove', { adminId: state.user.employeeId, requestIds: ids }).then(function (res) {
+    if (!res.success) { toast(res.error, true); return; }
+    toast('อนุมัติสำเร็จ ✓ ' + res.approved + ' คำขอ');
+    if (res.failed && res.failed.length) toast('⚠ ไม่สำเร็จ ' + res.failed.length + ' คำขอ', true);
+    switchTab('approvals');
+  }).catch(function () { toast('เชื่อมต่อไม่ได้', true); });
+}
+
+function bulkIssue() {
+  var ids = Object.keys(_bulkSel.approved);
+  if (!ids.length) return;
+  if (!confirm('จ่ายของ ' + ids.length + ' คำขอที่เลือก + ตัดสต็อก?')) return;
+  var btn = document.getElementById('bulkbtn-approved');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loader"></span>'; }
+  api('bulkIssue', { adminId: state.user.employeeId, requestIds: ids }).then(function (res) {
+    if (!res.success) { toast(res.error, true); return; }
+    invalidateMaster();
+    toast('จ่ายสำเร็จ ✓ ' + res.issued + ' คำขอ');
+    if (res.failed && res.failed.length) {
+      var msg = res.failed.map(function (f) { return f.requestId.slice(-6) + ': ' + f.error; }).join(' | ');
+      toast('⚠ ไม่สำเร็จ ' + res.failed.length + ' คำขอ — ' + msg, true);
+    }
+    if (res.lowStock && res.lowStock.length) toast('⚠ สต็อกต่ำ ' + res.lowStock.length + ' รายการ — ส่งอีเมลแล้ว', true);
+    switchTab('approvals');
+  }).catch(function () { toast('เชื่อมต่อไม่ได้', true); });
 }
 
 /* ================================================================
  * TAB: จัดการสต็อก (Stock In / Adjust)
  * ================================================================ */
 function renderStock(host) {
-  loadMaster().then(function () {
+  loadMaster(true).then(function () {
     var opts = state.master.items.filter(function (i) { return i.active; })
       .map(function (i) { return '<option value="' + esc(i.itemId) + '">' + esc(i.itemName) + ' (คงเหลือ ' + i.currentStock + ' ' + esc(i.unit) + ')</option>'; }).join('');
     host.innerHTML =
@@ -568,6 +651,7 @@ function doStockIn() {
   api('stockIn', { adminId: state.user.employeeId, itemId: itemId, qty: qty, note: document.getElementById('siNote').value })
     .then(function (res) {
       if (!res.success) return toast(res.error, true);
+      invalidateMaster();
       toast('รับเข้าสำเร็จ ✓ คงเหลือใหม่: ' + res.newStock);
       switchTab('stock');
     });
@@ -586,6 +670,7 @@ function doAdjust() {
       if (it && Number(qty) <= it.minStock) {
         toast('⚠ สต็อกต่ำกว่าขั้นต่ำ — ส่งอีเมลแจ้งเตือนแล้ว', true);
       }
+      invalidateMaster();
       switchTab('stock');
     });
 }
@@ -594,7 +679,7 @@ function doAdjust() {
  * TAB: Master Data (items / categories / employees)
  * ================================================================ */
 function renderMaster(host) {
-  loadMaster().then(function () {
+  loadMaster(true).then(function () {
     host.innerHTML =
       '<div class="card"><h3>อุปกรณ์ / Items</h3>' +
       '<div class="flex mb"><button class="btn btn-primary btn-sm" onclick="editItem()">+ เพิ่มอุปกรณ์</button></div>' +
@@ -648,11 +733,11 @@ function editItem(it) {
     (it.itemId ? '<div class="mt"><label>สถานะ</label><select id="fActive"><option value="true"' + (it.active ? ' selected' : '') + '>ใช้งาน</option><option value="false"' + (!it.active ? ' selected' : '') + '>ปิดใช้งาน</option></select></div>' : '') +
     '<div class="flex mt"><span class="spacer"></span>' +
     '<button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>' +
-    '<button class="btn btn-primary" onclick="saveItem()">บันทึก</button></div>'
+    '<button class="btn btn-primary" id="btnSaveItem" onclick="saveItem()">บันทึก</button></div>'
   );
 }
 
-function saveItem() {
+function saveItem(forceCreate) {
   var p = {
     adminId: state.user.employeeId,
     itemId: document.getElementById('fItemId').value || undefined,
@@ -667,9 +752,28 @@ function saveItem() {
   if (init) p.initialStock = init.value;
   var act = document.getElementById('fActive');
   if (act) p.active = act.value === 'true';
+  if (forceCreate) p.forceCreate = true;
+
+  var btn = document.getElementById('btnSaveItem');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loader"></span>'; } // guard double-click
   api('saveItem', p).then(function (res) {
-    if (!res.success) return toast(res.error, true);
+    if (res.duplicate) {
+      // soft warning — let admin confirm creating a same-name item (different category etc.)
+      if (confirm('มีอุปกรณ์ชื่อ "' + p.itemName + '" อยู่แล้ว\nยืนยันสร้างซ้ำหรือไม่? / Item name exists — create anyway?')) {
+        saveItem(true);
+      } else if (btn) { btn.disabled = false; btn.textContent = 'บันทึก'; }
+      return;
+    }
+    if (!res.success) {
+      toast(res.error, true);
+      if (btn) { btn.disabled = false; btn.textContent = 'บันทึก'; }
+      return;
+    }
+    invalidateMaster();
     closeModal(); toast('บันทึกสำเร็จ ✓'); switchTab('master');
+  }).catch(function () {
+    toast('เชื่อมต่อไม่ได้', true);
+    if (btn) { btn.disabled = false; btn.textContent = 'บันทึก'; }
   });
 }
 
@@ -693,6 +797,7 @@ function saveCategory() {
   if (!p.categoryName) return toast('กรุณากรอกชื่อหมวดหมู่', true);
   api('saveCategory', p).then(function (res) {
     if (!res.success) return toast(res.error, true);
+    invalidateMaster();
     closeModal(); toast('บันทึกสำเร็จ ✓'); switchTab('master');
   });
 }
